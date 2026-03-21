@@ -1,4 +1,4 @@
-name: Compile Kernel8750
+name: Compile Kernel
 
 on:
   workflow_dispatch:
@@ -7,13 +7,14 @@ on:
         description: Type the clang version of ur kernel
         required: true
         type: choice
+        default: clang-r563880c
         options:
-          - clang-3289846
-          - clang-r547379
-          - clang-r563880
-          - clang-r563880c
-          - clang-r574158
-          - clang-stable
+          - clang-r416183b1 #lineage-19.1 in android12-qpr3-release
+          - clang-r450784d  #lineage-20.0 in android13-qpr3-release
+          - clang-r487747c  #lineage-21.0 in android14-qpr3-release
+          - clang-r536225   #lineage-22.2 in android15-qpr2-release
+          - clang-r547379   #lineage-23.0 in android16-qpr3-release
+          - clang-r563880c  #lineage-23.2 in android16-qpr3-release
           
       kernel_source:
         description: Kernel Source Code
@@ -22,9 +23,10 @@ on:
         options:
           - LineageOS
           - crdroidandroid
+          - OnePlus12R-development
           
       kernel_branch:
-        description: Kernel Branch
+        description: Kernel Branch(such as lineage-23.2 sixteen-qpr1)
         required: true
         type: string
         default: ""
@@ -43,7 +45,7 @@ on:
           - ReSukiSU-with-susfs
 
       io_scheduler:
-        description: IO Scheduler（推荐选 adios）
+        description: IO Scheduler
         required: false
         type: choice
         options:
@@ -66,15 +68,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup SWAP + ccache
+      - name: Setup SWAP
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 16
+          
+      - name: Install build dependencies
         run: |
           sudo apt update
-          sudo apt install -y bc bison flex libssl-dev libelf-dev libdw-dev build-essential lz4 git python3 curl dwarves cpio gcc-aarch64-linux-gnu ccache
-          sudo swapoff -a || true
-          sudo rm -f /swapfile || true
-          sudo fallocate -l 32G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile || true
-          ccache -M 12G && echo "CCACHE_EXEC=/usr/bin/ccache" >> $GITHUB_ENV || true
-
+          sudo apt install -y \
+          bc bison flex \
+          libssl-dev \
+          libelf-dev \
+          libdw-dev \
+          build-essential \
+          lz4 \
+          git \
+          python3 \
+          curl \
+          dwarves \
+          cpio \
+          gcc-aarch64-linux-gnu
+          
       - name: Clone Kernel Source
         run: |
           git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/android_kernel_oneplus_${SOC}.git ${SOC}
@@ -84,6 +99,7 @@ jobs:
         run: |
           mkdir -p toolchains/${{ inputs.clang_version }}
           cd toolchains
+
           curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/${{ inputs.clang_version }}.tar.gz
           tar -xf "${{ inputs.clang_version }}.tar.gz" -C ${{ inputs.clang_version }}
 
@@ -95,10 +111,10 @@ jobs:
           export SUBARCH=arm64
           export LLVM=1
           export LLVM_IAS=1
-          export CC="ccache ${CLANG_ROOT}/clang"
-          export CXX="ccache ${CLANG_ROOT}/clang++"
-          export HOSTCC="ccache ${CLANG_ROOT}/clang"
-          export HOSTCXX="ccache ${CLANG_ROOT}/clang++"
+          export CC="${CLANG_ROOT}/clang"
+          export CXX="${CLANG_ROOT}/clang++"
+          export HOSTCC="${CLANG_ROOT}/clang"
+          export HOSTCXX="${CLANG_ROOT}/clang++"
           export LD="${CLANG_ROOT}/ld.lld"
           export AR="${CLANG_ROOT}/llvm-ar"
           export NM="${CLANG_ROOT}/llvm-nm"
@@ -109,12 +125,23 @@ jobs:
           cd ${SOC}
 
           case "${{ inputs.ksu_type }}" in
-            "None") ;;
-            "Official-KernelSU") curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main ;;
-            "KowSU") curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master ;;
-            "KernelSU-Next") curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev ;;
-            "KernelSU-Next-with-susfs") curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/dev-susfs/kernel/setup.sh" | bash -s dev-susfs ;;
-            "ReSukiSU"|"ReSukiSU-with-susfs") curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s builtin ;;
+            "None")
+              ;;
+            "Official-KernelSU")
+              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+              ;;
+            "KowSU")
+              curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master
+              ;;
+            "KernelSU-Next")
+              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
+              ;;
+            "KernelSU-Next-with-susfs")
+              curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
+              ;;
+            "ReSukiSU"|"ReSukiSU-with-susfs")
+              curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s builtin
+              ;;
           esac
           
           if [[ "${{ inputs.ksu_type }}" == *susfs ]]; then
@@ -137,12 +164,13 @@ jobs:
           fi
           
           touch ./.scmversion
-          sed -i "s|CONFIG_MODULE_SIG_PROTECT=y|CONFIG_MODULE_SIG_PROTECT=n|" arch/arm64/configs/gki_defconfig
+          if [[ "${{inputs.ksu_type}}" != "None" ]]; then
+            echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/gki_defconfig
+          fi
           
-          echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/gki_defconfig
           echo "CONFIG_ERHAI_DTB=y" >> arch/arm64/configs/gki_defconfig
 
-          # ==================== IO 调度器 ====================
+          # IO 调度器
           case "${{ inputs.io_scheduler }}" in
             adios)
               echo "CONFIG_MQ_IOSCHED_ADIOS=y" >> arch/arm64/configs/gki_defconfig
@@ -157,7 +185,6 @@ jobs:
             none)
               ;;
           esac
-          # ==================================================
 
           make O=out gki_defconfig vendor/sun_perf.config vendor/oplus/sun_perf.config
           
@@ -167,9 +194,11 @@ jobs:
         run: |
           ZIP_NAME="${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
           git clone https://github.com/Kernel-SU/AnyKernel3.git
+
           cp ${SOC}/out/arch/arm64/boot/Image AnyKernel3/Image
           cp ${SOC}/out/arch/arm64/boot/Image ./Image
           cd AnyKernel3
+
           zip -r9 ../"${ZIP_NAME}.zip" * -x .git
 
       - name: Create GitHub Release
