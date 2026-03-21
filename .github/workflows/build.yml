@@ -7,13 +7,14 @@ on:
         description: Type the clang version of ur kernel
         required: true
         type: choice
+        default: clang-r563880c
         options:
-          - clang-3289846
-          - clang-r547379
-          - clang-r563880
-          - clang-r563880c
-          - clang-r574158
-          - clang-stable
+          - clang-r416183b1 #lineage-19.1 in android12-qpr3-release
+          - clang-r450784d  #lineage-20.0 in android13-qpr3-release
+          - clang-r487747c  #lineage-21.0 in android14-qpr3-release
+          - clang-r536225   #lineage-22.2 in android15-qpr2-release
+          - clang-r547379   #lineage-23.0 in android16-qpr3-release
+          - clang-r563880c  #lineage-23.2 in android16-qpr3-release
           
       kernel_source:
         description: Kernel Source Code
@@ -85,6 +86,34 @@ jobs:
 
       - name: Download AOSP Clang
         run: |
+          case "${{ inputs.clang_version }}" in
+
+            "clang-r416183b1")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-qpr3-release/clang-r416183b1.tar.gz
+              ;;
+
+            "clang-r450784d")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-qpr3-release/clang-r450784d.tar.gz
+              ;;
+
+            "clang-r487747c")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-qpr3-release/clang-r487747c.tar.gz
+              ;;
+
+            "clang-r536225")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-qpr2-release/clang-r536225.tar.gz
+              ;;
+
+            "clang-r547379")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/clang-r547379.tar.gz
+              ;;
+              
+            "clang-r563880c")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/clang-r563880c.tar.gz
+              ;;
+              
+          esac
+          
           mkdir -p toolchains/${{ inputs.clang_version }}
           cd toolchains
 
@@ -136,6 +165,7 @@ jobs:
             "ReSukiSU"|"ReSukiSU-with-susfs")
               curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
               ;;
+              
           esac
           
           if [[ "${{ inputs.ksu_type }}" == *susfs ]]; then
@@ -158,8 +188,10 @@ jobs:
           fi
           
           touch ./.scmversion
+          if [[ "${{inputs.ksu_type}}" != "None" ]]; then
+            echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/gki_defconfig
+          fi
           
-          echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/gki_defconfig
           make O=out gki_defconfig vendor/kalama_GKI.config vendor/oplus/kalama_GKI.config vendor/debugfs.config
           
           make -j2 O=out Image
