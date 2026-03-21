@@ -53,7 +53,6 @@ on:
           - bfq
         default: adios
 
-      # ========== 新增功能输入 ==========
       kernel_suffix:
         description: "内核后缀 (留空默认，开头不加连字符，如: mykernel)"
         required: false
@@ -230,82 +229,66 @@ jobs:
           if [[ "${{inputs.ksu_type}}" != "None" ]]; then
             echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/gki_defconfig
           fi
-
           echo "CONFIG_ERHAI_DTB=y" >> arch/arm64/configs/gki_defconfig
 
-          # ========== 动态内核配置（使用 scripts/config） ==========
-          # 先使用原有方式生成基础配置
-          make O=out gki_defconfig vendor/sun_perf.config vendor/oplus/sun_perf.config
+          # 生成基础配置
+          make O=out gki_defconfig
 
-          # 使用 scripts/config 进行动态调整
-          cd out
+          # 安全合并存在的 vendor 配置
+          for cfg in vendor/sun_perf.config vendor/oplus/sun_perf.config; do
+            if [ -f "$cfg" ]; then
+              echo "合并 $cfg"
+              scripts/kconfig/merge_config.sh -O out -m out/.config "$cfg" || true
+            fi
+          done
 
           # IO 调度器
           case "${{ inputs.io_scheduler }}" in
             adios)
-              ../scripts/config --file .config --enable CONFIG_MQ_IOSCHED_ADIOS
-              ../scripts/config --file .config --enable CONFIG_MQ_IOSCHED_DEFAULT_ADIOS
+              scripts/config --file out/.config --enable CONFIG_MQ_IOSCHED_ADIOS
+              scripts/config --file out/.config --enable CONFIG_MQ_IOSCHED_DEFAULT_ADIOS
               ;;
             kyber)
-              ../scripts/config --file .config --enable CONFIG_MQ_IOSCHED_KYBER
+              scripts/config --file out/.config --enable CONFIG_MQ_IOSCHED_KYBER
               ;;
             bfq)
-              ../scripts/config --file .config --enable CONFIG_BFQ_GROUP_IOSCHED
+              scripts/config --file out/.config --enable CONFIG_BFQ_GROUP_IOSCHED
               ;;
           esac
 
           # 网络功能增强
           if [[ "${{ inputs.better_net }}" == "true" ]]; then
             echo "启用网络功能增强..."
-            ../scripts/config --file .config --enable CONFIG_BPF_STREAM_PARSER
-            ../scripts/config --file .config --enable CONFIG_NETFILTER_XT_MATCH_ADDRTYPE
-            ../scripts/config --file .config --enable CONFIG_NETFILTER_XT_SET
-            ../scripts/config --file .config --enable CONFIG_IP_SET
-            ../scripts/config --file .config --set-val CONFIG_IP_SET_MAX 65534
-            ../scripts/config --file .config --enable CONFIG_IP_SET_BITMAP_IP
-            ../scripts/config --file .config --enable CONFIG_IP_SET_BITMAP_IPMAC
-            ../scripts/config --file .config --enable CONFIG_IP_SET_BITMAP_PORT
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IP
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPMARK
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPPORT
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPPORTIP
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPPORTNET
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPMAC
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_MAC
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NETPORTNET
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NET
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NETNET
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NETPORT
-            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NETIFACE
-            ../scripts/config --file .config --enable CONFIG_IP_SET_LIST_SET
-            ../scripts/config --file .config --enable CONFIG_IP6_NF_NAT
-            ../scripts/config --file .config --enable CONFIG_IP6_NF_TARGET_MASQUERADE
+            scripts/config --file out/.config --enable CONFIG_BPF_STREAM_PARSER
+            scripts/config --file out/.config --enable CONFIG_NETFILTER_XT_MATCH_ADDRTYPE
+            scripts/config --file out/.config --enable CONFIG_NETFILTER_XT_SET
+            scripts/config --file out/.config --enable CONFIG_IP_SET
+            scripts/config --file out/.config --set-val CONFIG_IP_SET_MAX 65534
+            # 可根据需要添加更多选项
           fi
 
           # BBR 拥塞控制
           if [[ "${{ inputs.bbr_enable }}" != "false" ]]; then
             echo "启用 BBR 拥塞控制..."
-            ../scripts/config --file .config --enable CONFIG_TCP_CONG_ADVANCED
-            ../scripts/config --file .config --enable CONFIG_TCP_CONG_BBR
-            ../scripts/config --file .config --enable CONFIG_TCP_CONG_CUBIC
-            ../scripts/config --file .config --enable CONFIG_TCP_CONG_VEGAS
-            ../scripts/config --file .config --enable CONFIG_TCP_CONG_NV
-            ../scripts/config --file .config --enable CONFIG_TCP_CONG_WESTWOOD
-            ../scripts/config --file .config --enable CONFIG_TCP_CONG_HTCP
-            ../scripts/config --file .config --enable CONFIG_TCP_CONG_BRUTAL
+            scripts/config --file out/.config --enable CONFIG_TCP_CONG_ADVANCED
+            scripts/config --file out/.config --enable CONFIG_TCP_CONG_BBR
+            scripts/config --file out/.config --enable CONFIG_TCP_CONG_CUBIC
+            scripts/config --file out/.config --enable CONFIG_TCP_CONG_VEGAS
+            scripts/config --file out/.config --enable CONFIG_TCP_CONG_NV
+            scripts/config --file out/.config --enable CONFIG_TCP_CONG_WESTWOOD
+            scripts/config --file out/.config --enable CONFIG_TCP_CONG_HTCP
+            scripts/config --file out/.config --enable CONFIG_TCP_CONG_BRUTAL
             if [[ "${{ inputs.bbr_enable }}" == "default" ]]; then
-              ../scripts/config --file .config --set-val CONFIG_DEFAULT_TCP_CONG bbr
+              scripts/config --file out/.config --set-val CONFIG_DEFAULT_TCP_CONG bbr
             else
-              ../scripts/config --file .config --set-val CONFIG_DEFAULT_TCP_CONG cubic
+              scripts/config --file out/.config --set-val CONFIG_DEFAULT_TCP_CONG cubic
             fi
           fi
 
-          # 启用 O2 优化 (已通过 KCFLAGS 传递，同时确保内核配置)
-          ../scripts/config --file .config --enable CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
+          # 启用 O2 优化
+          scripts/config --file out/.config --enable CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
 
-          cd ..
-
-          # 如果启用了内核后缀，修改 setlocalversion
+          # 内核后缀处理
           if [[ -n "${{ inputs.kernel_suffix }}" ]]; then
             echo "设置内核后缀: -${{ inputs.kernel_suffix }}"
             sed -i "\$s|echo \"\\\$res\"|echo \"-${{ inputs.kernel_suffix }}\"|" scripts/setlocalversion
@@ -313,7 +296,7 @@ jobs:
             echo "CONFIG_LOCALVERSION_AUTO=n" >> arch/arm64/configs/gki_defconfig
           fi
 
-          # 编译内核，显式传递 KCFLAGS=-O2
+          # 编译内核
           make -j$(nproc) O=out KCFLAGS=-O2 Image
 
       - name: Make AnyKernel3
@@ -329,21 +312,7 @@ jobs:
           cp ${SOC}/out/arch/arm64/boot/Image ./Image
           cd AnyKernel3
 
-          cat > ak3.log << EOF
-Author: $GITHUB_ACTOR
-Repo: $GITHUB_REPOSITORY
-Branch: ${{ inputs.kernel_branch }}
-Run ID: $GITHUB_RUN_ID
-Commit: $GITHUB_SHA
-Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-Kernel Ver: $(cat ../${SOC}/out/.config | grep CONFIG_LOCALVERSION | head -1)
-KSU Type: ${{ inputs.ksu_type }}
-IO Scheduler: ${{ inputs.io_scheduler }}
-Better Net: ${{ inputs.better_net }}
-BBR: ${{ inputs.bbr_enable }}
-Kernel Suffix: ${{ inputs.kernel_suffix }}
-Optimization: O2
-EOF
+          # 不再生成 ak3.log，直接打包
           zip -r9 ../"${ZIP_NAME}.zip" * -x .git
 
       - name: 保存 ccache 缓存
