@@ -1,0 +1,365 @@
+name: 8750 B
+
+on:
+  workflow_dispatch:
+    inputs:
+      clang_version:
+        description: Type the clang version of ur kernel
+        required: true
+        type: choice
+        default: clang-r563880c
+        options:
+          - clang-r416183b1  # lineage-19.1 in android12-qpr3-release
+          - clang-r450784d   # lineage-20.0 in android13-qpr3-release
+          - clang-r487747c   # lineage-21.0 in android14-qpr3-release
+          - clang-r536225    # lineage-22.2 in android15-qpr2-release
+          - clang-r547379    # lineage-23.0 in android16-qpr3-release
+          - clang-r563880c   # lineage-23.2 in android16-qpr3-release
+
+      kernel_source:
+        description: Kernel Source Code
+        required: true
+        type: choice
+        options:
+          - LineageOS
+          - crdroidandroid
+          - OnePlus12R-development
+
+      kernel_branch:
+        description: Kernel Branch (such as lineage-23.2 sixteen-qpr1)
+        required: true
+        type: string
+        default: ""
+
+      ksu_type:
+        description: "KernelSU Version"
+        required: true
+        type: choice
+        options:
+          - None
+          - Official-KernelSU
+          - KernelSU-Next
+          - KowSU
+          - ReSukiSU
+
+      io_scheduler:
+        description: IO Scheduler
+        required: false
+        type: choice
+        options:
+          - none
+          - adios
+          - kyber
+          - bfq
+        default: adios
+
+      # ========== 新增功能输入 ==========
+      kernel_suffix:
+        description: "内核后缀 (留空默认，开头不加连字符，如: mykernel)"
+        required: false
+        type: string
+        default: ""
+
+      better_net:
+        description: "网络功能增强 (ipset/iptables 支持)"
+        required: true
+        type: boolean
+        default: false
+
+      bbr_enable:
+        description: "BBR 拥塞控制 (false:关闭, true:仅加入算法, default:启用并设为默认)"
+        required: true
+        type: choice
+        default: 'false'
+        options:
+          - 'false'
+          - 'true'
+          - 'default'
+
+      ccache_enable:
+        description: "启用 ccache 缓存 (加速重复编译)"
+        required: true
+        type: boolean
+        default: true
+
+      ccache_update:
+        description: "强制更新 ccache 缓存"
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  Kernel_CI:
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOC: sm8750
+      CCACHE_KEY: ccache-${{ github.run_id }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SWAP
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 16
+
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison flex \
+            libssl-dev libelf-dev libdw-dev \
+            build-essential lz4 git python3 curl dwarves cpio \
+            gcc-aarch64-linux-gnu
+          if [[ "${{ inputs.ccache_enable }}" == "true" ]]; then
+            sudo apt install -y ccache
+          fi
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 -b ${{ inputs.kernel_branch }} \
+            https://github.com/${{ inputs.kernel_source }}/android_kernel_oneplus_${SOC}.git ${SOC}
+          git clone --depth=1 -b ${{ inputs.kernel_branch }} \
+            https://github.com/${{ inputs.kernel_source }}/android_kernel_oneplus_${SOC}-modules.git ${SOC}-modules || true
+
+      - name: Download AOSP Clang
+        run: |
+          mkdir -p toolchains/${{ inputs.clang_version }}
+          cd toolchains
+          case "${{ inputs.clang_version }}" in
+            "clang-r416183b1")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-qpr3-release/clang-r416183b1.tar.gz
+              ;;
+            "clang-r450784d")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-qpr3-release/clang-r450784d.tar.gz
+              ;;
+            "clang-r487747c")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-qpr3-release/clang-r487747c.tar.gz
+              ;;
+            "clang-r536225")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-qpr2-release/clang-r536225.tar.gz
+              ;;
+            "clang-r547379")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/clang-r547379.tar.gz
+              ;;
+            "clang-r563880c")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/clang-r563880c.tar.gz
+              ;;
+          esac
+          tar -xf "${{ inputs.clang_version }}.tar.gz" -C ${{ inputs.clang_version }}
+          rm -f "${{ inputs.clang_version }}.tar.gz"
+
+      - name: ccache 缓存恢复
+        if: inputs.ccache_enable == 'true'
+        uses: actions/cache/restore@v5
+        id: ccache-restore
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ inputs.kernel_branch }}
+          restore-keys: |
+            ${{ env.CCACHE_KEY }}-${{ runner.os }}-
+            ${{ env.CCACHE_KEY }}-
+
+      - name: 配置 ccache
+        if: inputs.ccache_enable == 'true'
+        run: |
+          export CCACHE_DIR="${{ github.workspace }}/.ccache"
+          export CCACHE_MAXSIZE=3G
+          export CCACHE_COMPILERCHECK="none"
+          export CCACHE_BASEDIR="${{ github.workspace }}"
+          export CCACHE_NOHASHDIR="true"
+          export CCACHE_HARDLINK="true"
+          mkdir -p "$CCACHE_DIR"
+          ccache -M "$CCACHE_MAXSIZE"
+          ccache -o compression=true
+          echo "ccache 初始状态:"
+          ccache -s
+
+      - name: Compile Kernel
+        run: |
+          CLANG_ROOT="${GITHUB_WORKSPACE}/toolchains/${{ inputs.clang_version }}/bin"
+          export PATH="${CLANG_ROOT}:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export LLVM=1
+          export LLVM_IAS=1
+          export CC="${CLANG_ROOT}/clang"
+          export CXX="${CLANG_ROOT}/clang++"
+          export HOSTCC="${CLANG_ROOT}/clang"
+          export HOSTCXX="${CLANG_ROOT}/clang++"
+          export LD="${CLANG_ROOT}/ld.lld"
+          export AR="${CLANG_ROOT}/llvm-ar"
+          export NM="${CLANG_ROOT}/llvm-nm"
+          export OBJCOPY="${CLANG_ROOT}/llvm-objcopy"
+          export OBJDUMP="${CLANG_ROOT}/llvm-objdump"
+          export STRIP="${CLANG_ROOT}/llvm-strip"
+
+          if [[ "${{ inputs.ccache_enable }}" == "true" ]]; then
+            export CCACHE_DIR="${{ github.workspace }}/.ccache"
+            export CC="ccache clang"
+            export CXX="ccache clang++"
+            export HOSTCC="ccache clang"
+            export HOSTCXX="ccache clang++"
+          fi
+
+          cd ${SOC}
+
+          # 集成 KernelSU（不带 susfs）
+          case "${{ inputs.ksu_type }}" in
+            "None")
+              ;;
+            "Official-KernelSU")
+              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+              ;;
+            "KowSU")
+              curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master
+              ;;
+            "KernelSU-Next")
+              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
+              ;;
+            "ReSukiSU")
+              curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s builtin
+              ;;
+          esac
+
+          touch ./.scmversion
+          if [[ "${{inputs.ksu_type}}" != "None" ]]; then
+            echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/gki_defconfig
+          fi
+
+          echo "CONFIG_ERHAI_DTB=y" >> arch/arm64/configs/gki_defconfig
+
+          # ========== 动态内核配置（使用 scripts/config） ==========
+          # 先使用原有方式生成基础配置
+          make O=out gki_defconfig vendor/sun_perf.config vendor/oplus/sun_perf.config
+
+          # 使用 scripts/config 进行动态调整
+          cd out
+
+          # IO 调度器
+          case "${{ inputs.io_scheduler }}" in
+            adios)
+              ../scripts/config --file .config --enable CONFIG_MQ_IOSCHED_ADIOS
+              ../scripts/config --file .config --enable CONFIG_MQ_IOSCHED_DEFAULT_ADIOS
+              ;;
+            kyber)
+              ../scripts/config --file .config --enable CONFIG_MQ_IOSCHED_KYBER
+              ;;
+            bfq)
+              ../scripts/config --file .config --enable CONFIG_BFQ_GROUP_IOSCHED
+              ;;
+          esac
+
+          # 网络功能增强
+          if [[ "${{ inputs.better_net }}" == "true" ]]; then
+            echo "启用网络功能增强..."
+            ../scripts/config --file .config --enable CONFIG_BPF_STREAM_PARSER
+            ../scripts/config --file .config --enable CONFIG_NETFILTER_XT_MATCH_ADDRTYPE
+            ../scripts/config --file .config --enable CONFIG_NETFILTER_XT_SET
+            ../scripts/config --file .config --enable CONFIG_IP_SET
+            ../scripts/config --file .config --set-val CONFIG_IP_SET_MAX 65534
+            ../scripts/config --file .config --enable CONFIG_IP_SET_BITMAP_IP
+            ../scripts/config --file .config --enable CONFIG_IP_SET_BITMAP_IPMAC
+            ../scripts/config --file .config --enable CONFIG_IP_SET_BITMAP_PORT
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IP
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPMARK
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPPORT
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPPORTIP
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPPORTNET
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_IPMAC
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_MAC
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NETPORTNET
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NET
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NETNET
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NETPORT
+            ../scripts/config --file .config --enable CONFIG_IP_SET_HASH_NETIFACE
+            ../scripts/config --file .config --enable CONFIG_IP_SET_LIST_SET
+            ../scripts/config --file .config --enable CONFIG_IP6_NF_NAT
+            ../scripts/config --file .config --enable CONFIG_IP6_NF_TARGET_MASQUERADE
+          fi
+
+          # BBR 拥塞控制
+          if [[ "${{ inputs.bbr_enable }}" != "false" ]]; then
+            echo "启用 BBR 拥塞控制..."
+            ../scripts/config --file .config --enable CONFIG_TCP_CONG_ADVANCED
+            ../scripts/config --file .config --enable CONFIG_TCP_CONG_BBR
+            ../scripts/config --file .config --enable CONFIG_TCP_CONG_CUBIC
+            ../scripts/config --file .config --enable CONFIG_TCP_CONG_VEGAS
+            ../scripts/config --file .config --enable CONFIG_TCP_CONG_NV
+            ../scripts/config --file .config --enable CONFIG_TCP_CONG_WESTWOOD
+            ../scripts/config --file .config --enable CONFIG_TCP_CONG_HTCP
+            ../scripts/config --file .config --enable CONFIG_TCP_CONG_BRUTAL
+            if [[ "${{ inputs.bbr_enable }}" == "default" ]]; then
+              ../scripts/config --file .config --set-val CONFIG_DEFAULT_TCP_CONG bbr
+            else
+              ../scripts/config --file .config --set-val CONFIG_DEFAULT_TCP_CONG cubic
+            fi
+          fi
+
+          # 启用 O2 优化 (已通过 KCFLAGS 传递，同时确保内核配置)
+          ../scripts/config --file .config --enable CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
+
+          cd ..
+
+          # 如果启用了内核后缀，修改 setlocalversion
+          if [[ -n "${{ inputs.kernel_suffix }}" ]]; then
+            echo "设置内核后缀: -${{ inputs.kernel_suffix }}"
+            sed -i "\$s|echo \"\\\$res\"|echo \"-${{ inputs.kernel_suffix }}\"|" scripts/setlocalversion
+            sed -i 's/${scm_version}//' scripts/setlocalversion
+            echo "CONFIG_LOCALVERSION_AUTO=n" >> arch/arm64/configs/gki_defconfig
+          fi
+
+          # 编译内核，显式传递 KCFLAGS=-O2
+          make -j$(nproc) O=out KCFLAGS=-O2 Image
+
+      - name: Make AnyKernel3
+        run: |
+          if [[ -n "${{ inputs.kernel_suffix }}" ]]; then
+            ZIP_NAME="${{ inputs.ksu_type }}_${{ inputs.kernel_suffix }}_$(date -u +"%Y%m%d_%H%M")"
+          else
+            ZIP_NAME="${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
+          fi
+          git clone https://github.com/Kernel-SU/AnyKernel3.git
+
+          cp ${SOC}/out/arch/arm64/boot/Image AnyKernel3/Image
+          cp ${SOC}/out/arch/arm64/boot/Image ./Image
+          cd AnyKernel3
+
+          cat > ak3.log << EOF
+Author: $GITHUB_ACTOR
+Repo: $GITHUB_REPOSITORY
+Branch: ${{ inputs.kernel_branch }}
+Run ID: $GITHUB_RUN_ID
+Commit: $GITHUB_SHA
+Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+Kernel Ver: $(cat ../${SOC}/out/.config | grep CONFIG_LOCALVERSION | head -1)
+KSU Type: ${{ inputs.ksu_type }}
+IO Scheduler: ${{ inputs.io_scheduler }}
+Better Net: ${{ inputs.better_net }}
+BBR: ${{ inputs.bbr_enable }}
+Kernel Suffix: ${{ inputs.kernel_suffix }}
+Optimization: O2
+EOF
+          zip -r9 ../"${ZIP_NAME}.zip" * -x .git
+
+      - name: 保存 ccache 缓存
+        if: inputs.ccache_enable == 'true' && (inputs.ccache_update == 'true' || steps.ccache-restore.outputs.cache-hit != 'true')
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ inputs.kernel_branch }}
+
+      - name: Create GitHub Release
+        run: |
+          if [[ -n "${{ inputs.kernel_suffix }}" ]]; then
+            REL_NAME="${SOC}_${{ inputs.kernel_source }}-${{ inputs.kernel_branch }}_${{ inputs.ksu_type }}_${{ inputs.kernel_suffix }}_$(date -u +"%Y%m%d_%H%M")"
+          else
+            REL_NAME="${SOC}_${{ inputs.kernel_source }}-${{ inputs.kernel_branch }}_${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
+          fi
+          cd ${GITHUB_WORKSPACE}
+          ZIP_FILE=$(ls *.zip)
+          gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" Image
