@@ -24,7 +24,7 @@ on:
           - crdroidandroid
           
       kernel_branch:
-        description: Kernel Branch(such as lineage-23.2 sixteen-qpr1)
+        description: Kernel Branch
         required: true
         type: string
         default: ""
@@ -41,6 +41,17 @@ on:
           - KowSU
           - ReSukiSU
           - ReSukiSU-with-susfs
+
+      io_scheduler:
+        description: IO Scheduler（推荐选 adios）
+        required: false
+        type: choice
+        options:
+          - none
+          - adios
+          - kyber
+          - bfq
+        default: adios
           
 jobs:
   Kernel_CI:
@@ -55,28 +66,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup SWAP
-        uses: pierotofy/set-swap-space@master
-        with:
-          swap-size-gb: 16
-          
-      - name: Install build dependencies
+      - name: Setup SWAP + ccache
         run: |
           sudo apt update
-          sudo apt install -y \
-          bc bison flex \
-          libssl-dev \
-          libelf-dev \
-          libdw-dev \
-          build-essential \
-          lz4 \
-          git \
-          python3 \
-          curl \
-          dwarves \
-          cpio \
-          gcc-aarch64-linux-gnu
-          
+          sudo apt install -y bc bison flex libssl-dev libelf-dev libdw-dev build-essential lz4 git python3 curl dwarves cpio gcc-aarch64-linux-gnu ccache
+          sudo swapoff -a || true
+          sudo rm -f /swapfile || true
+          sudo fallocate -l 32G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile || true
+          ccache -M 12G && echo "CCACHE_EXEC=/usr/bin/ccache" >> $GITHUB_ENV || true
+
       - name: Clone Kernel Source
         run: |
           git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/android_kernel_oneplus_${SOC}.git ${SOC}
@@ -86,7 +84,6 @@ jobs:
         run: |
           mkdir -p toolchains/${{ inputs.clang_version }}
           cd toolchains
-
           curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/${{ inputs.clang_version }}.tar.gz
           tar -xf "${{ inputs.clang_version }}.tar.gz" -C ${{ inputs.clang_version }}
 
@@ -98,10 +95,10 @@ jobs:
           export SUBARCH=arm64
           export LLVM=1
           export LLVM_IAS=1
-          export CC="${CLANG_ROOT}/clang"
-          export CXX="${CLANG_ROOT}/clang++"
-          export HOSTCC="${CLANG_ROOT}/clang"
-          export HOSTCXX="${CLANG_ROOT}/clang++"
+          export CC="ccache ${CLANG_ROOT}/clang"
+          export CXX="ccache ${CLANG_ROOT}/clang++"
+          export HOSTCC="ccache ${CLANG_ROOT}/clang"
+          export HOSTCXX="ccache ${CLANG_ROOT}/clang++"
           export LD="${CLANG_ROOT}/ld.lld"
           export AR="${CLANG_ROOT}/llvm-ar"
           export NM="${CLANG_ROOT}/llvm-nm"
@@ -112,29 +109,12 @@ jobs:
           cd ${SOC}
 
           case "${{ inputs.ksu_type }}" in
-          
-            "None")
-              ;;
-              
-            "Official-KernelSU")
-              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-              ;;
-              
-            "KowSU")
-               curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master
-              ;;
-
-            "KernelSU-Next")
-              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
-              ;;
-
-            "KernelSU-Next-with-susfs")
-              curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
-              ;;
-
-            "ReSukiSU"|"ReSukiSU-with-susfs")
-              curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s builtin
-              ;;
+            "None") ;;
+            "Official-KernelSU") curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main ;;
+            "KowSU") curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master ;;
+            "KernelSU-Next") curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev ;;
+            "KernelSU-Next-with-susfs") curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/dev-susfs/kernel/setup.sh" | bash -s dev-susfs ;;
+            "ReSukiSU"|"ReSukiSU-with-susfs") curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s builtin ;;
           esac
           
           if [[ "${{ inputs.ksu_type }}" == *susfs ]]; then
@@ -161,6 +141,24 @@ jobs:
           
           echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/gki_defconfig
           echo "CONFIG_ERHAI_DTB=y" >> arch/arm64/configs/gki_defconfig
+
+          # ==================== IO 调度器 ====================
+          case "${{ inputs.io_scheduler }}" in
+            adios)
+              echo "CONFIG_MQ_IOSCHED_ADIOS=y" >> arch/arm64/configs/gki_defconfig
+              echo "CONFIG_MQ_IOSCHED_DEFAULT_ADIOS=y" >> arch/arm64/configs/gki_defconfig
+              ;;
+            kyber)
+              echo "CONFIG_MQ_IOSCHED_KYBER=y" >> arch/arm64/configs/gki_defconfig
+              ;;
+            bfq)
+              echo "CONFIG_BFQ_GROUP_IOSCHED=y" >> arch/arm64/configs/gki_defconfig
+              ;;
+            none)
+              ;;
+          esac
+          # ==================================================
+
           make O=out gki_defconfig vendor/sun_perf.config vendor/oplus/sun_perf.config
           
           make -j2 O=out Image
@@ -169,11 +167,9 @@ jobs:
         run: |
           ZIP_NAME="${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
           git clone https://github.com/Kernel-SU/AnyKernel3.git
-
           cp ${SOC}/out/arch/arm64/boot/Image AnyKernel3/Image
           cp ${SOC}/out/arch/arm64/boot/Image ./Image
           cd AnyKernel3
-
           zip -r9 ../"${ZIP_NAME}.zip" * -x .git
 
       - name: Create GitHub Release
