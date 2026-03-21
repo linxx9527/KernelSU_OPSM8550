@@ -97,6 +97,34 @@ jobs:
 
       - name: Download AOSP Clang
         run: |
+          case "${{ inputs.clang_version }}" in
+
+            "clang-r416183b1")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-qpr3-release/clang-r416183b1.tar.gz
+              ;;
+
+            "clang-r450784d")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-qpr3-release/clang-r450784d.tar.gz
+              ;;
+
+            "clang-r487747c")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-qpr3-release/clang-r487747c.tar.gz
+              ;;
+
+            "clang-r536225")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-qpr2-release/clang-r536225.tar.gz
+              ;;
+
+            "clang-r547379")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/clang-r547379.tar.gz
+              ;;
+              
+            "clang-r563880c")
+              curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/clang-r563880c.tar.gz
+              ;;
+              
+          esac
+          
           mkdir -p toolchains/${{ inputs.clang_version }}
           cd toolchains
 
