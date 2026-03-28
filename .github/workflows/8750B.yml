@@ -75,17 +75,6 @@ on:
           - 'true'
           - 'default'
 
-      ccache_enable:
-        description: "启用 ccache 缓存 (加速重复编译)"
-        required: true
-        type: boolean
-        default: true
-
-      ccache_update:
-        description: "强制更新 ccache 缓存"
-        required: true
-        type: boolean
-        default: false
 
 jobs:
   Kernel_CI:
@@ -151,32 +140,6 @@ jobs:
           esac
           tar -xf "${{ inputs.clang_version }}.tar.gz" -C ${{ inputs.clang_version }}
           rm -f "${{ inputs.clang_version }}.tar.gz"
-
-      - name: ccache 缓存恢复
-        if: inputs.ccache_enable == 'true'
-        uses: actions/cache/restore@v5
-        id: ccache-restore
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ inputs.kernel_branch }}
-          restore-keys: |
-            ${{ env.CCACHE_KEY }}-${{ runner.os }}-
-            ${{ env.CCACHE_KEY }}-
-
-      - name: 配置 ccache
-        if: inputs.ccache_enable == 'true'
-        run: |
-          export CCACHE_DIR="${{ github.workspace }}/.ccache"
-          export CCACHE_MAXSIZE=3G
-          export CCACHE_COMPILERCHECK="none"
-          export CCACHE_BASEDIR="${{ github.workspace }}"
-          export CCACHE_NOHASHDIR="true"
-          export CCACHE_HARDLINK="true"
-          mkdir -p "$CCACHE_DIR"
-          ccache -M "$CCACHE_MAXSIZE"
-          ccache -o compression=true
-          echo "ccache 初始状态:"
-          ccache -s
 
       - name: Compile Kernel
         run: |
@@ -314,13 +277,6 @@ jobs:
 
           # 不再生成 ak3.log，直接打包
           zip -r9 ../"${ZIP_NAME}.zip" * -x .git
-
-      - name: 保存 ccache 缓存
-        if: inputs.ccache_enable == 'true' && (inputs.ccache_update == 'true' || steps.ccache-restore.outputs.cache-hit != 'true')
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ inputs.kernel_branch }}
 
       - name: Create GitHub Release
         run: |
