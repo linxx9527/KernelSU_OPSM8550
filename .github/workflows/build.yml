@@ -115,9 +115,8 @@ jobs:
           esac
           
           mkdir -p toolchains/${{ inputs.clang_version }}
-          cd toolchains
-
-          tar -xf "${{ inputs.clang_version }}.tar.gz" -C ${{ inputs.clang_version }}
+          
+          tar -xf "${{ inputs.clang_version }}.tar.gz" -C "toolchains/${{ inputs.clang_version }}"
 
       - name: Compile Kernel
         run: |
