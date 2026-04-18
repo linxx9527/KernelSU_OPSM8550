@@ -140,7 +140,7 @@ jobs:
   Kernel_CI:
     env:
         GH_TOKEN: ${{ github.token }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
@@ -168,8 +168,7 @@ jobs:
           curl \
           dwarves \
           cpio \
-          gcc-aarch64-linux-gnu \
-          gcc-arm-linux-androideabi
+          gcc-aarch64-linux-gnu
           
       - name: Clone Kernel Source
         run: |
@@ -210,7 +209,7 @@ jobs:
               ;;
               
           esac
-          
+
           mkdir -p toolchains/${{ inputs.clang_version }}
           
           tar -xf "${{ inputs.clang_version }}.tar.gz" -C "toolchains/${{ inputs.clang_version }}"
@@ -298,7 +297,6 @@ jobs:
           if [[ "${{ inputs.enable_gcc }}" == "true" ]]; then
 
             export CROSS_COMPILE=aarch64-linux-gnu-
-            export CROSS_COMPILE=arm-linux-androideabi-
 
           fi
 
@@ -387,7 +385,6 @@ jobs:
           if [[ "${{ inputs.enable_gcc }}" == "true" ]]; then
 
             export CROSS_COMPILE=aarch64-linux-gnu-
-            export CROSS_COMPILE=arm-linux-androideabi-
 
           fi
 
