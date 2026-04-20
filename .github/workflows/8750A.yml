@@ -391,6 +391,8 @@ jobs:
 
       - name: Build Kernel Image
         run: |
+          cd ${{ inputs.soc }} 
+
           CLANG_ROOT="${GITHUB_WORKSPACE}/toolchains/${{ inputs.clang_version }}/bin"
           export PATH="${CLANG_ROOT}:$PATH"
           export ARCH=arm64
@@ -399,9 +401,7 @@ jobs:
           export LLVM_IAS=1
 
           if [[ "${{ inputs.enable_gcc }}" == "true" ]]; then
-
             export CROSS_COMPILE=aarch64-linux-gnu-
-
           fi
 
           case "${{ inputs.io_scheduler }}" in
@@ -415,14 +415,12 @@ jobs:
             bfq)
               scripts/config --file out/.config --enable CONFIG_BFQ_GROUP_IOSCHED
               ;;
-          esac
+           esac
 
           scripts/config --file out/.config --enable CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
 
-          cd ${{ inputs.soc }}
-
           make -j$(nproc) O=out Image
-
+          
       - name: Make AnyKernel3
         run: |
           ZIP_NAME="${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
