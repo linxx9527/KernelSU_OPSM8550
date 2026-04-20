@@ -1,4 +1,4 @@
-name: Compile Kernel
+name: 8750A
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ on:
         description: "SOC: Type your soc"
         required: true
         type: string
-        default: "sm8550"
+        default: "sm8750"
 
       has_modules_repo:
         description: "Has-Kernel-Repo: Enable this ur kernel has modules repo"
@@ -67,13 +67,13 @@ on:
         description: "Kernel-Branch: such as lineage-23.2 sixteen-qpr1 etc."
         required: true
         type: string
-        default: ""
+        default: "lineage-23.2"
         
       kernel_configs:
         description: "Kernel-Configs: Select ur kernel configs(Use Manual-Type to custom it)"
         required: true
         type: choice
-        default: oplus-sm8550-los
+        default: oplus-sm8750-los
         options:
           - Manual-Type
           - oplus-sm8150-los
@@ -82,7 +82,7 @@ on:
           - oplus-sm8350-los
           - oplus-sm8550-los
           - oplus-sm8650-los
-
+          - oplus-sm8750-los
 
       kernel_configs_manual:
         description: "Kernel-Configs: If u selected Manual-Type in previous options, manually type ur kernel configs here."
@@ -94,12 +94,13 @@ on:
         description: "TMPFS_XATTR: U can enable this if ur kernel has no CONFIG_TMPFS_XATTR=y"
         required: true
         type: boolean
-        default: false
+        default: true
 
       ksu_type:
         description: "KSU: KernelSU Version"
         required: true
         type: choice
+        default: KernelSU-Next
         options:
           - None
           - Official-KernelSU
@@ -109,6 +110,17 @@ on:
           - KernelSU-by-xx
           - ReSukiSU
           - ReSukiSU-with-susfs
+
+      io_scheduler:
+        description: IO Scheduler
+        required: true
+        type: choice
+        default: adios
+        options:
+          - none
+          - adios
+          - kyber
+          - bfq
 
       susfs-gki:
         description: "SUSFS-GKI: select ur kernel version(for gki)"
@@ -387,6 +399,21 @@ jobs:
             export CROSS_COMPILE=aarch64-linux-gnu-
 
           fi
+
+          case "${{ inputs.io_scheduler }}" in
+            adios)
+              scripts/config --file out/.config --enable CONFIG_MQ_IOSCHED_ADIOS
+              scripts/config --file out/.config --enable CONFIG_MQ_IOSCHED_DEFAULT_ADIOS
+              ;;
+            kyber)
+              scripts/config --file out/.config --enable CONFIG_MQ_IOSCHED_KYBER
+              ;;
+            bfq)
+              scripts/config --file out/.config --enable CONFIG_BFQ_GROUP_IOSCHED
+              ;;
+          esac
+
+          scripts/config --file out/.config --enable CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
 
           cd ${{ inputs.soc }}
 
