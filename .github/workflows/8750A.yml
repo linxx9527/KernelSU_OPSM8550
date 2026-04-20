@@ -354,7 +354,6 @@ jobs:
               ;;
 
               "oplus-sm8750-los")
-              echo "CONFIG_OPLUS_DEVICE_DTBS=y" >> arch/arm64/configs/gki_defconfig
               make O=out gki_defconfig vendor/sun_perf.config vendor/oplus/sun_perf.config
               ;;
 
