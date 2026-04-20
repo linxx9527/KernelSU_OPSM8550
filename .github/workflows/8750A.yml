@@ -353,6 +353,10 @@ jobs:
               make O=out gki_defconfig vendor/pineapple_GKI.config vendor/oplus/pineapple_GKI.config
               ;;
 
+              "oplus-sm8750-los")
+              make O=out gki_defconfig vendor/sun_perf.config vendor/oplus/sun_perf.config
+              ;;
+
             esac
 
           fi
