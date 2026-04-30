@@ -36,11 +36,19 @@ on:
         description: "Kernel-Source: Kernel repo's org/user on github"
         required: true
         type: choice
+        default: LineageOS
         options:
+          - Manual-Type
           - LineageOS
           - crdroidandroid
           - OnePlus12R-development
           - YAAP
+
+      kernel_source_manual:
+        description: "Kernel-Source-Manual: If u selected Manual-Type in previous options, manually type ur repo's org/user on github here."
+        required: false
+        type: string
+        default: ""
 
       kernel_source_format:
         description: "Source-Format: Select ur kernel source format(1 for los etc. 2 for yaap etc.)(keep default if u dont know)"
@@ -72,10 +80,10 @@ on:
           - oplus-sm8650-los
 
       kernel_configs_manual:
-        description: "Kernel-Configs: If u selected Manual-Type in previous options, manually type ur kernel configs here."
+        description: "Kernel-Configs-Manual: If u selected Manual-Type in previous options, manually type ur kernel configs here."
         required: false
         type: string
-        default: "gki_defconfig vendor/kalama_GKI.config vendor/oplus/kalama_GKI.config vendor/debugfs.config"
+        default: ""
 
       ksu_type:
         description: "KSU: KernelSU Version"
@@ -190,11 +198,25 @@ jobs:
           
       - name: Clone Kernel Source
         run: |
-          git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}.git ${{ inputs.soc }}
+          if [[ "${{ inputs.kernel_source }}" == "Manual-Type" ]]; then
 
-          if [[ "${{ inputs.has_modules_repo }}" == "true" ]]; then
+            git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source_manual }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}.git ${{ inputs.soc }}
 
-            git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}-modules.git ${{ inputs.soc }}-modules
+            if [[ "${{ inputs.has_modules_repo }}" == "true" ]]; then
+
+              git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source_manual }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}-modules.git ${{ inputs.soc }}-modules
+
+            fi
+
+          else
+
+            git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}.git ${{ inputs.soc }}
+
+            if [[ "${{ inputs.has_modules_repo }}" == "true" ]]; then
+
+                git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}-modules.git ${{ inputs.soc }}-modules
+
+            fi
 
           fi
 
