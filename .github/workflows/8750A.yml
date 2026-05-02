@@ -138,7 +138,17 @@ on:
           - 4.14
           - 4.19
           - 5.4
-
+          
+      droidspaces:
+        description: "DroidSpaces: Enable DroidSpaces"
+        required: true
+        type: choice
+        default: None
+        options:
+          - None
+          - 5.4-6.6
+          - 3.18-4.19
+          
       has_modules_repo:
         description: "Has-Modules-Repo: Enable this ur kernel has modules repo"
         required: true
@@ -171,6 +181,12 @@ on:
 
       fuck_werror:
         description: "Fuck-Werror: FUCK WERROR IN CONFIGS"
+        required: true
+        type: boolean
+        default: false
+
+      enable_my_own_susfs_patch:
+        description: "fuck susfs: fuck susfs"
         required: true
         type: boolean
         default: false
@@ -208,31 +224,68 @@ jobs:
           dwarves \
           cpio \
           gcc-aarch64-linux-gnu
-          
+
+      - name: Save options
+        run: |
+          echo "brand:${{ inputs.brand }}"
+          echo "soc:${{ inputs.soc }}"
+          echo "clang_version:${{ inputs.clang_version }}"
+          echo "kernel_source:${{ inputs.kernel_source }}"
+          echo "kernel_source_manual:${{ inputs.kernel_source_manual }}"
+          echo "kernel_source_format:${{ inputs.kernel_source_format }}"
+          echo "ksu_type:${{ inputs.ksu_type }}"
+          echo "susfs-gki:${{ inputs.susfs-gki }}"
+          echo "susfs-nongki:${{ inputs.susfs-nongki }}"
+          echo "droidspaces:${{ inputs.droidspaces }}"
+          echo "has_modules_repo:${{ inputs.has_modules_repo }}"
+          echo "enable_tmpfs-xattr:${{ inputs.enable_tmpfs-xattr }}"
+          echo "enable_gcc:${{ inputs.enable_gcc }}"
+          echo "enable_gcc_32bits:${{ inputs.enable_gcc_32bits }}"
+          echo "fuck_modules_sig_protect:${{ inputs.fuck_modules_sig_protect }}"
+          echo "fuck_werror:${{ inputs.fuck_werror }}"
+          echo "enable_my_own_susfs_patch:${{ inputs.enable_my_own_susfs_patch }}"
+
+          echo "brand:${{ inputs.brand }}" >> options.txt
+          echo "soc:${{ inputs.soc }}" >> options.txt
+          echo "clang_version:${{ inputs.clang_version }}" >> options.txt
+          echo "kernel_source:${{ inputs.kernel_source }}" >> options.txt
+          echo "kernel_source_manual:${{ inputs.kernel_source_manual }}" >> options.txt
+          echo "kernel_source_format:${{ inputs.kernel_source_format }}" >> options.txt
+          echo "ksu_type:${{ inputs.ksu_type }}" >> options.txt
+          echo "susfs-gki:${{ inputs.susfs-gki }}" >> options.txt
+          echo "susfs-nongki:${{ inputs.susfs-nongki }}" >> options.txt
+          echo "droidspaces:${{ inputs.droidspaces }}" >> options.txt
+          echo "has_modules_repo:${{ inputs.has_modules_repo }}" >> options.txt
+          echo "enable_tmpfs-xattr:${{ inputs.enable_tmpfs-xattr }}" >> options.txt
+          echo "enable_gcc:${{ inputs.enable_gcc }}" >> options.txt
+          echo "enable_gcc_32bits:${{ inputs.enable_gcc_32bits }}" >> options.txt
+          echo "fuck_modules_sig_protect:${{ inputs.fuck_modules_sig_protect }}" >> options.txt
+          echo "fuck_werror:${{ inputs.fuck_werror }}" >> options.txt
+          echo "enable_my_own_susfs_patch:${{ inputs.enable_my_own_susfs_patch }}" >> options.txt
+      
       - name: Clone Kernel Source
         run: |
           if [[ "${{ inputs.kernel_source }}" == "Manual-Type" ]]; then
 
-            git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source_manual }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}.git ${{ inputs.soc }}
+            git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source_manual }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}.git ${{ inputs.soc }} || exit 1
 
             if [[ "${{ inputs.has_modules_repo }}" == "true" ]]; then
 
-              git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source_manual }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}-modules.git ${{ inputs.soc }}-modules
+              git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source_manual }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}-modules.git ${{ inputs.soc }}-modules || exit 1
 
             fi
 
           else
 
-            git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}.git ${{ inputs.soc }}
+            git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}.git ${{ inputs.soc }} || exit 1
 
             if [[ "${{ inputs.has_modules_repo }}" == "true" ]]; then
 
-                git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}-modules.git ${{ inputs.soc }}-modules
+                git clone --depth=1 -b ${{ inputs.kernel_branch }} https://github.com/${{ inputs.kernel_source }}/${{ inputs.kernel_source_format }}_${{ inputs.brand }}_${{ inputs.soc }}-modules.git ${{ inputs.soc }}-modules || exit 1
 
             fi
 
           fi
-
 
       - name: Download AOSP Clang
         run: |
@@ -266,7 +319,7 @@ jobs:
 
           mkdir -p toolchains/${{ inputs.clang_version }}
           
-          tar -xf "${{ inputs.clang_version }}.tar.gz" -C "toolchains/${{ inputs.clang_version }}"
+          tar -xf "${{ inputs.clang_version }}.tar.gz" -C "toolchains/${{ inputs.clang_version }}" || exit 1
           
           if [[ "${{ inputs.enable_gcc_32bits }}" == "true" ]]; then
 
@@ -276,9 +329,9 @@ jobs:
          
           fi
           
-      - name: include ksu and susfs
+      - name: Include goodies
         run: |
-          cd ${{ inputs.soc }}
+          cd ${{ inputs.soc }} || exit 1
 
           case "${{ inputs.ksu_type }}" in
 
@@ -286,23 +339,23 @@ jobs:
               ;;
 
             "Official-KernelSU")
-              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main || exit 1
               ;;
 
             "KowSU")
-               curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master
+              curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master || exit 1
               ;;
 
             "KernelSU-by-xx")
-              curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
+              curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master || exit 1
               ;;
-
+              
             "KernelSU-Next")
               curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
               ;;
 
             "KernelSU-Next-with-susfs")
-              curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
+              curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/dev-susfs/kernel/setup.sh" | bash -s dev-susfs || exit 1
               ;;
 
             "ReSukiSU"|"ReSukiSU-with-susfs")
@@ -310,6 +363,25 @@ jobs:
               ;;
 
           esac
+
+          if [[ "${{ inputs.droidspaces }}" == "5.4-6.6" ]]; then
+
+            curl -Lo droidspaces.patch https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/refs/heads/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/001.GKI-below-6.12-fix_sysvipc_kabi_6_7_8.patch
+            patch -p1 < droidspaces.patch
+
+            cp ${GITHUB_WORKSPACE}/configs/droidspaces-gki.config arch/arm64/configs/vendor/droidspaces.config
+
+          elif [[ "${{ inputs.droidspaces }}" == "3.18-4.19" ]]; then
+
+            # Why there is no 01.fix_kernel_panic_in_xt_qtaguid.patch? Because I cant find net/netfilter/xt_qtaguid.c in my k4.14 4.19 5.4
+            # 为什么没有01.fix_kernel_panic_in_xt_qtaguid.patch? 在我用的4.14 4.19 5.4内无此文件
+
+            curl -Lo patch2.patch https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/refs/heads/main/Documentation/resources/kernel-patches/non-GKI/02.fix_restore%20cgroup%20file%20prefix%20handling%20.patch || exit 1
+            patch -p1 < patch2.patch
+
+            cp ${GITHUB_WORKSPACE}/configs/droidspaces-nongki.config arch/arm64/configs/vendor/droidspaces.config
+            
+          fi
 
           if [[ "${{ inputs.ksu_type }}" == *susfs* ]]; then
 
@@ -324,19 +396,29 @@ jobs:
 
             elif [[ "${{ inputs.susfs-gki }}" != "None" ]]; then
 
-              git clone -b gki-${{ inputs.susfs-gki }} https://gitlab.com/simonpunk/susfs4ksu.git susfs
-              cd susfs
-              cp ./kernel_patches/50_add_susfs_in_gki-${{ inputs.susfs-gki }}.patch ..
+              git clone -b gki-${{ inputs.susfs-gki }} https://gitlab.com/simonpunk/susfs4ksu.git susfs || exit 1
+              cd susfs || exit 1
+              cp ./kernel_patches/50_add_susfs_in_gki-${{ inputs.susfs-gki }}.patch ../susfs.patch
               cp ./kernel_patches/fs/* ../fs/
               cp ./kernel_patches/include/linux/* ../include/linux/
-              cd ..
+              cd .. || exit 1
 
-              patch -p1 < 50_add_susfs_in_gki-${{ inputs.susfs-gki }}.patch
+              if [[ "${{ inputs.enable_my_own_susfs_patch }}" == "true" ]]; then
+
+                if [[ "${{ inputs.susfs-gki }}" == "android13-5.15" ]]; then
+
+                  patch -p0 < ${GITHUB_WORKSPACE}/patches/fix_task_mmu_5.15.patch
+
+                fi
+
+              fi
+
+              patch -p1 < susfs.patch || true
 
             elif [[ "${{ inputs.susfs-nongki }}" != "None" ]]; then
 
-              curl -Lo susfs.patch https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/refs/heads/mainline/Patches/Patch/susfs_patch_to_${{ inputs.susfs-nongki }}.patch
-              curl -Lo inline.sh https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/refs/heads/mainline/Patches/susfs_inline_hook_patches.sh
+              curl -Lo susfs.patch https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/refs/heads/mainline/Patches/Patch/susfs_patch_to_${{ inputs.susfs-nongki }}.patch || exit 1
+              curl -Lo inline.sh https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/refs/heads/mainline/Patches/susfs_inline_hook_patches.sh || exit 1
 
               patch -p1 < susfs.patch
               bash inline.sh
@@ -368,7 +450,14 @@ jobs:
           
           fi
           
-          cd ${{ inputs.soc }}
+          if [[ "${{ inputs.droidspaces }}" != "None" ]]; then
+            export DROIDSPACES_CONFIG="vendor/droidspaces.config"
+          else
+            export DROIDSPACES_CONFIG=""
+          fi
+
+
+          cd ${{ inputs.soc }} || exit 1
 
           if [[ "${{ inputs.kernel_configs }}" == "Manual-Type" ]]; then
 
@@ -386,31 +475,31 @@ jobs:
             case "${{ inputs.kernel_configs }}" in
 
               "oplus-sm8150-los")
-              make O=out vendor/sm8150-perf_defconfig vendor/oplus.config
+              make O=out vendor/sm8150-perf_defconfig vendor/oplus.config $DROIDSPACES_CONFIG
               ;;
 
               "oplus-sm8150-yaap")
-              make O=out gulch_defconfig vendor/debugfs.config
+              make O=out gulch_defconfig vendor/debugfs.config $DROIDSPACES_CONFIG
               ;;
 
               "oplus-sm8250-los")
-              make O=out vendor/kona-perf_defconfig vendor/oplus.config
+              make O=out vendor/kona-perf_defconfig vendor/oplus.config $DROIDSPACES_CONFIG
               ;;
 
               "oplus-sm8350-los")
-              make O=out vendor/lahaina-qgki_defconfig
+              make O=out vendor/lahaina-qgki_defconfig $DROIDSPACES_CONFIG
               ;;
 
               "oplus-sm8550-los")
-              make O=out gki_defconfig vendor/kalama_GKI.config vendor/oplus/kalama_GKI.config vendor/debugfs.config
+              make O=out gki_defconfig vendor/kalama_GKI.config vendor/oplus/kalama_GKI.config vendor/debugfs.config $DROIDSPACES_CONFIG
               ;;
 
               "oplus-sm8650-los")
-              make O=out gki_defconfig vendor/pineapple_GKI.config vendor/oplus/pineapple_GKI.config
+              make O=out gki_defconfig vendor/pineapple_GKI.config vendor/oplus/pineapple_GKI.config $DROIDSPACES_CONFIG
               ;;
 
               "oplus-sm8750-los")
-              make O=out gki_defconfig vendor/sun_perf.config vendor/oplus/sun_perf.config
+              make O=out gki_defconfig vendor/sun_perf.config vendor/oplus/sun_perf.config $DROIDSPACES_CONFIG
               ;;
 
             esac
@@ -464,7 +553,7 @@ jobs:
 
       - name: Build Kernel Image
         run: |
-          cd ${{ inputs.soc }} 
+          cd ${{ inputs.soc }} || exit 1
 
           CLANG_ROOT="${GITHUB_WORKSPACE}/toolchains/${{ inputs.clang_version }}/bin"
           export PATH="${CLANG_ROOT}:$PATH"
@@ -499,16 +588,16 @@ jobs:
 
           scripts/config --file out/.config --enable CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
 
-          make -j$(nproc) O=out Image
+          make -j$(nproc) O=out Image 2>&1 | tee ${GITHUB_WORKSPACE}/build.log
           
       - name: Make AnyKernel3
         run: |
           ZIP_NAME="${{ inputs.soc }}_${{ inputs.kernel_source }}-${{ inputs.kernel_branch }}_${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
-          git clone https://github.com/Kernel-SU/AnyKernel3.git
+          git clone https://github.com/Kernel-SU/AnyKernel3.git || exit 1
 
           cp ${{ inputs.soc }}/out/arch/arm64/boot/Image AnyKernel3/Image
           cp ${{ inputs.soc }}/out/arch/arm64/boot/Image ./Image
-          cd AnyKernel3
+          cd AnyKernel3 || exit 1
 
           sed -i "s|ksu_supported=false|ksu_supported=true|" anykernel.sh
 
@@ -517,6 +606,6 @@ jobs:
       - name: Create GitHub Release
         run: |
           REL_NAME="${{ inputs.soc }}_${{ inputs.kernel_source }}-${{ inputs.kernel_branch }}_${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
-          cd ${GITHUB_WORKSPACE}
+          cd ${GITHUB_WORKSPACE} || exit 1
           ZIP_FILE=$(ls *.zip)
-          gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" Image
+          gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" Image build.log options.txt
